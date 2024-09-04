@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dangerous Serpent Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #gameOver, #nextLevel, #victory {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        #scoreBoard {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="scoreBoard">
+        <div id="score">Score: 0</div>
+        <div id="level">Level: 1</div>
+    </div>
+    <div id="gameOver">
+        <h1>Game Over</h1>
+        <button onclick="resetGame()">Restart</button>
+    </div>
+    <div id="nextLevel">
+        <h1>Level Complete</h1>
+        <button onclick="nextLevel()">Next Level</button>
+    </div>
+    <div id="victory">
+        <h1>Victory!</h1>
+        <button onclick="resetGame()">Play Again</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script>
+        let segments = [];
+        let numSegments = 10;
+        let segmentLength = 15;
+        let hue = 0;
+        let score = 0;
+        let spider = null;
+        let killingObjects = [];
+        let obstacles = [];
+        let gameOver = false;
+        let levelComplete = false;
+        let victory = false;
+        let level = 1;
+        const levelScoreThreshold = 50; // Score required to reach the next level
+        const obstacleSpeed = 2; // Speed of moving obstacles
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            colorMode(RGB, 255, 255, 255);
+            resetGame();
+        }
+
+        function draw() {
+            background(0);
+
+            if (gameOver) {
+                document.getElementById('gameOver').style.display = 'block';
+                noLoop();
+                return;
+            }
+
+            if (levelComplete) {
+                document.getElementById('nextLevel').style.display = 'block';
+                noLoop();
+                return;
+            }
+
+            if (victory) {
+                document.getElementById('victory').style.display = 'block';
+                noLoop();
+                return;
+            }
+
+            // Move and draw the spider (red ball)
+            if (spider) {
+                spider.x += spider.vx;
+                spider.y += spider.vy;
+
+                if (spider.x < 0 || spider.x > width) spider.vx *= -1;
+                if (spider.y < 0 || spider.y > height) spider.vy *= -1;
+
+                // Check for collision with the snake
+                if (dist(segments[0].x, segments[0].y, spider.x, spider.y) < 20) {
+                    gameOver = true; // End the game if the snake touches the spider
+                }
+
+                fill(255, 0, 0); // Red color for spider
+                noStroke();
+                ellipse(spider.x, spider.y, 20, 20);
+            }
+
+            // Draw and update moving obstacles
+            fill(100, 100, 100); // Gray color for obstacles
+            noStroke();
+            obstacles.forEach(obstacle => {
+                rect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+
+                // Update obstacle position
+                obstacle.x += obstacle.vx;
+                obstacle.y += obstacle.vy;
+
+                // Bounce off edges
+                if (obstacle.x < 0 || obstacle.x + obstacle.width > width) obstacle.vx *= -1;
+                if (obstacle.y < 0 || obstacle.y + obstacle.height > height) obstacle.vy *= -1;
+            });
+
+King Sir, [9/4/2024 12:39 PM]
+// Check for collision with obstacles
+            for (let obstacle of obstacles) {
+                if (segments.some(seg => rectCollision(seg.x, seg.y, segmentLength, segmentLength, obstacle.x, obstacle.y, obstacle.width, obstacle.height))) {
+                    gameOver = true; // End the game if the snake touches an obstacle
+                }
+            }
+
+            // Change color over time
+            hue = (hue + 1) % 360;
+
+            // Tail movement follows the mouse
+            segments[0].x = lerp(segments[0].x, mouseX, 0.2);
+            segments[0].y = lerp(segments[0].y, mouseY, 0.2);
+
+            for (let i = 1; i < segments.length; i++) {
+                let dx = segments[i].x - segments[i - 1].x;
+                let dy = segments[i].y - segments[i - 1].y;
+                let angle = atan2(dy, dx);
+
+                segments[i].x = segments[i - 1].x + cos(angle) * segmentLength;
+                segments[i].y = segments[i - 1].y + sin(angle) * segmentLength;
+            }
+
+            // Draw the snake with RGB colors
+            let r = (hue + 0) % 256;
+            let g = (hue + 85) % 256;
+            let b = (hue + 170) % 256;
+
+            noFill();
+            stroke(r, g, b); // RGB color for the snake's outline
+            strokeWeight(8); // Thicker stroke for a more aggressive look
+            beginShape();
+            vertex(segments[0].x, segments[0].y);
+            for (let i = 1; i < segments.length; i++) {
+                vertex(segments[i].x, segments[i].y);
+            }
+            endShape();
+
+            // Draw the snake's head with RGB color
+            fill(r, g, b);
+            noStroke();
+            ellipse(segments[0].x, segments[0].y, segmentLength * 1.5, segmentLength * 1.5); // Larger head
+
+            // Draw and handle killing objects
+            for (let i = 0; i < killingObjects.length; i++) {
+                let killObj = killingObjects[i];
+                fill(255, 0, 0); // Red color for killing objects
+                textSize(32);
+                text(killObj.symbol, killObj.x, killObj.y);
+
+                if (dist(segments[0].x, segments[0].y, killObj.x, killObj.y) < segmentLength) {
+                    score += 1; // Increase score for collecting the killing object
+                    killingObjects.splice(i, 1); // Remove the object after collection
+                    killingObjects.push(createKillingObject()); // Add a new object
+                }
+            }
+
+            // Randomly add a new killing object
+            if (random() < 0.01 && killingObjects.length < 5) {
+                killingObjects.push(createKillingObject());
+            }
+
+            // Update score and level display
+            document.getElementById('score').innerText = 'Score: ' + score;
+            document.getElementById('level').innerText = 'Level: ' + level;
+
+            // Check if the player reached the next level score threshold
+            if (score >= levelScoreThreshold) {
+                victory = true;
+            }
+        }
+
+        function rectCollision(x1, y1, w1, h1, x2, y2, w2, h2) {
+            return !(x2 > x1 + w1  x2 + w2 < x1  y2 > y1 + h1 || y2 + h2 < y1);
+        }
+
+        function createKillingObject() {
+            let symbols = ['🥀', '🕷', '💮', '🏵', '🏵', '🐦', '🐚', '🐙'];
+            return {
+                symbol: random(symbols),
+                x: random(width),
+                y: random(height)
+            };
+        }
+
+        function resetGame() {
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('nextLevel').style.display = 'none';
+            document.getElementById('victory').style.display = 'none';
+            segments = [];
+            for (let i = 0; i < numSegments; i++) {
+
+King Sir, [9/4/2024 12:39 PM]
+segments.push({ x: width / 2, y: height / 2 });
+            }
+            spider = {
+                x: random(width),
+                
+                x: random(width),
+                y: random(height),
+                vx: random(-2, 2),
+                vy: random(-2, 2)
+            };
+            killingObjects = [];
+            obstacles = createObstacles();
+            score = 0;
+            gameOver = false;
+            levelComplete = false;
+            victory = false;
+            loop();
+        }
+
+        function nextLevel() {
+            levelComplete = false;
+            level += 1; // Increase the level
+            numSegments += 5; // Increase the number of segments for the next level
+            spider.vx *= 1.2; // Increase the speed of the spider
+            spider.vy *= 1.2;
+            obstacleSpeed *= 1.2; // Increase the speed of the obstacles
+            levelScoreThreshold += 50; // Increase the score threshold for the next level
+            obstacles = createObstacles(); // Generate new obstacles for the new level
+            resetGame();
+        }
+
+        function createObstacles() {
+            let obstacles = [];
+            for (let i = 0; i < 10 + level; i++) { // Increase the number of obstacles with each level
+                obstacles.push({
+                    x: random(width),
+                    y: random(height),
+                    width: random(30, 100),
+                    height: random(10, 50),
+                    vx: random(-obstacleSpeed, obstacleSpeed),
+                    vy: random(-obstacleSpeed, obstacleSpeed)
+                });
+            }
+            return obstacles;
+        }
+
+        // Ensure the canvas resizes with the window
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html>
